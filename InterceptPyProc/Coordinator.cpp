@@ -38,7 +38,9 @@ void Coordinator::MainLoop() {
 	int pid;
 	while (true) {
 		while (!(pid = FindProcIdByName(procName))) {}
-		ForkProcess(procName, (const int)pid);
+		
+		if (handlersById.find(pid) == handlersById.end())
+			ForkProcess(procName, (const int)pid);
 	}
 }
 
@@ -101,11 +103,6 @@ void Coordinator::ForkProcess(const std::string& procName, const int pid) {
 	 
 }
 
-void Coordinator::GetProcessHandle(int pid) {
-	HANDLE processHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
-	handlersById[pid] = processHandle;
-}
-
 void Coordinator::GainDebugPrivilege() {
 	HANDLE tokenHandle;
 	if (OpenProcessToken(coordinatorProcHandle, TOKEN_ALL_ACCESS, &tokenHandle) == 0)
@@ -131,7 +128,21 @@ void Coordinator::GainDebugPrivilege() {
 
 	pTokenPrivileges = (PTOKEN_PRIVILEGES)pBuffer;
 
+	for (int i = 0; i < pTokenPrivileges->PrivilegeCount; i++) {
+		if (pTokenPrivileges->Privileges[i].Luid.HighPart == privilegeRequired.HighPart
+			&& pTokenPrivileges->Privileges[i].Luid.LowPart == privilegeRequired.LowPart)
+		{
+			pTokenPrivileges->Privileges[i].Attributes |= SE_PRIVILEGE_ENABLED;
+			AdjustTokenPrivileges(tokenHandle, FALSE, pTokenPrivileges, tokenPrivLen, NULL, NULL);
+		}
+	}
+
 	CloseHandle(tokenHandle);
+}
+
+void Coordinator::GetProcessHandle(int pid) {
+	HANDLE processHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+	handlersById[pid] = processHandle;
 }
 
 void Coordinator::AttachToProcess(int pid) {
@@ -140,8 +151,6 @@ void Coordinator::AttachToProcess(int pid) {
 		exit(1);
 	}
 }
-
-
 
 void Coordinator::BreakProcess(int pid) {
 	if (DebugBreakProcess(handlersById[pid]) == 0) {
@@ -239,7 +248,8 @@ void Coordinator::ValidateFiles(std::vector<std::wstring>& filePathes) {
 		if (!std::filesystem::exists(*it))
 			it = filePathes.erase(it);
 	}
-}void Coordinator::RunLogger(std::wstring filePath) {
+}
+void Coordinator::RunLogger(std::wstring filePath) {
 
 	// !!! TODO 
 	// Separate Logger Class which will Create Python Processes to merge and log scripts

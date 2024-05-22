@@ -20,6 +20,9 @@ private:
 	void ForkProcess(const std::string & procName, const int pid);
 	int FindProcIdByName(const std::string & procName);
 
+
+	// TODO Create separate Class like <Process> with all below methods
+	// until ANALYZE METHODS
 	void GainDebugPrivilege();
 	void GetProcessHandle(int pid);
 	void AttachToProcess(int pid);
