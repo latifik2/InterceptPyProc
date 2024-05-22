@@ -21,8 +21,8 @@ private:
 	int FindProcIdByName(const std::string & procName);
 
 	void GainDebugPrivilege();
+	void GetProcessHandle(int pid);
 	void AttachToProcess(int pid);
-	void GetHandle(int pid);
 	void BreakProcess(int pid);
 	void GetNativeFunction();
 
@@ -40,6 +40,8 @@ private:
 
 
 	// FIELDES
+	HANDLE coordinatorProcHandle;
+
 	std::map<int, HANDLE> handlersById;
 	pfnNtQueryInformationProcess NtQueryInformationProcess;
 

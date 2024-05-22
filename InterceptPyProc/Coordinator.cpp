@@ -12,6 +12,9 @@ Coordinator::Coordinator(const std::string & procName): procName(procName) {
 	NtQueryInformationProcess = NULL;
 	GetNativeFunction();
 	//Need some func to validate procName <procName>.exe
+
+	coordinatorProcHandle = GetCurrentProcess();
+	GainDebugPrivilege();
 }
 
 bool Coordinator::IsRunAsAdmin() {
@@ -78,9 +81,8 @@ int Coordinator::FindProcIdByName(const std::string& procName) {
 void Coordinator::ForkProcess(const std::string& procName, const int pid) {
 	std::cout << std::format("[#] Process {} found! PID - {}", procName, pid) << std::endl;
 
-	GainDebugPrivilege();
+	GetProcessHandle(pid);
 	AttachToProcess(pid);
-	GetHandle(pid);
 	BreakProcess(pid);
 	_PROCESS_BASIC_INFORMATION* pPBI = GetPBI(pid);
 	PPEB pPEB = GetPEB(pid, pPBI);
@@ -99,6 +101,39 @@ void Coordinator::ForkProcess(const std::string& procName, const int pid) {
 	 
 }
 
+void Coordinator::GetProcessHandle(int pid) {
+	HANDLE processHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+	handlersById[pid] = processHandle;
+}
+
+void Coordinator::GainDebugPrivilege() {
+	HANDLE tokenHandle;
+	if (OpenProcessToken(coordinatorProcHandle, TOKEN_ALL_ACCESS, &tokenHandle) == 0)
+		Debug::GetLastErrorAsString("OpenProcessToken error:");
+
+	LUID privilegeRequired;
+	if (!LookupPrivilegeValue(NULL, SE_DEBUG_NAME, &privilegeRequired))
+		Debug::GetLastErrorAsString("LookupPrivilegeValue error:");
+
+	TOKEN_PRIVILEGES tokenPrivileges;
+	PTOKEN_PRIVILEGES pTokenPrivileges = NULL;
+	BYTE* pBuffer = NULL;
+	DWORD tokenPrivLen = 0;
+
+	// GET tpLen value to know the size of tokenPrivileges struct. sizeof returns incorrect value
+	if (GetTokenInformation(tokenHandle, TokenPrivileges, NULL, 0, &tokenPrivLen) == 0)
+		Debug::GetLastErrorAsString("GetTokenInformation error:");
+	//ZeroMemory(&tokenPrivileges, tokenPrivLen);
+	pBuffer = (BYTE *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, tokenPrivLen);
+
+	if (GetTokenInformation(tokenHandle, TokenPrivileges, pBuffer, tokenPrivLen, &tokenPrivLen) == 0)
+		Debug::GetLastErrorAsString("GetTokenInformation error:");
+
+	pTokenPrivileges = (PTOKEN_PRIVILEGES)pBuffer;
+
+	CloseHandle(tokenHandle);
+}
+
 void Coordinator::AttachToProcess(int pid) {
 	if (DebugActiveProcess(pid) == 0) {
 		Debug::GetLastErrorAsString("Failed to attach to a process");
@@ -106,18 +141,7 @@ void Coordinator::AttachToProcess(int pid) {
 	}
 }
 
-void Coordinator::GainDebugPrivilege() {
-	LUID luid;
 
-	if (!LookupPrivilegeValue(NULL, SE_DEBUG_NAME, &luid)) {
-		Debug::GetLastErrorAsString("LookupPrivilegeValue error:");
-	}
-}
-
-void Coordinator::GetHandle(int pid) {
-	HANDLE processHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
-	handlersById[pid] = processHandle;
-}
 
 void Coordinator::BreakProcess(int pid) {
 	if (DebugBreakProcess(handlersById[pid]) == 0) {
